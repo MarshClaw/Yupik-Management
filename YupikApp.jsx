@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   Wallet, TrendingUp, TrendingDown, Calendar, FileText,
   Download, Plus, Edit3, Trash2, Search, Filter, Bell,
@@ -25,6 +25,18 @@ const todayDate = new Date(TODAY);
 const isOverdue = (d) => new Date(d) < todayDate;
 const daysUntil = (d) => Math.ceil((new Date(d) - todayDate) / (1000*60*60*24));
 const genId = () => Date.now() + Math.random();
+
+// ==================== LOCAL STORAGE PERSISTENCE ====================
+const LS_PREFIX = "yupik_";
+const loadLS = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key);
+    return raw !== null ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+};
+const saveLS = (key, value) => {
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)); } catch {}
+};
 
 // ==================== PAYMENT CATEGORIES ====================
 const DEFAULT_CATEGORIES = {
@@ -2664,37 +2676,55 @@ const LoginScreen = ({ onLogin }) => {
 };
 
 // ==================== MAIN APP ====================
+// Initial inline data moved to constants for localStorage fallback
+const INIT_TASKS = [
+  {id:1,title:"Processar pagamento Unit Legal",amount:851.78,assignee:"Kátia Mendes",priority:"alta",status:"pendente",dueDate:"2026-03-10",method:"Transferência bancária",bank:"bpi",notes:"FT 2026A1/40 — vencido desde 10.02",payableId:21,category:"servicos"},
+  {id:2,title:"Processar pagamento AR Telecom",amount:190.80,assignee:"Kátia Mendes",priority:"alta",status:"em_processamento",dueDate:"2026-03-08",method:"Transferência bancária",bank:"abanca",notes:"F26_001853 — vencido desde 03.03",payableId:8,category:"telecom"},
+  {id:3,title:"Enviar plano pagamentos Redicom",amount:0,assignee:"Kátia Mendes",priority:"média",status:"pendente",dueDate:"2026-03-12",method:"",bank:"",notes:"Copiar plano de CC e enviar por email",payableId:null,category:""},
+  {id:4,title:"Verificar recebimento Escala25",amount:162.28,assignee:"Kátia Mendes",priority:"baixa",status:"pendente",dueDate:"2026-03-15",method:"",bank:"",notes:"FT 2026A1/58 — verificar se cliente pagou",payableId:null,category:""},
+];
+const INIT_CONFIRMING_PAYS = [
+  {id:1,supplier:"Scarpa",doc:"2023FE02027",amount:2733.44,payDate:"2026-02-13",debitDate:"2026-06-13",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
+  {id:2,supplier:"Equip UK",doc:"SI2512-07363",amount:2636.94,payDate:"2026-02-16",debitDate:"2026-06-16",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
+  {id:3,supplier:"Boreal",doc:"001-53925",amount:1591.85,payDate:"2026-02-23",debitDate:"2026-06-23",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
+  {id:4,supplier:"YY Vertical",doc:"CO",amount:700,payDate:"2026-02-25",debitDate:"2026-06-25",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
+  {id:5,supplier:"Dicaltex",doc:"BG/2485",amount:439.82,payDate:"2026-01-13",debitDate:"2026-03-10",bank:"bpi",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
+];
+const INIT_DAILY_SALES = [
+  {date:"2026-03-02",loja:1280.50,dist:0,site:0,cartoes:980.50,dinheiro:290,mbway:0,paypal:0,visaOnline:10,refMB:0,tb:0,bitcoin:0,valesReg:0},
+  {date:"2026-03-03",loja:890.20,dist:215,site:45.90,cartoes:650.20,dinheiro:69.70,mbway:0,paypal:0,visaOnline:0,refMB:385.30,tb:0,bitcoin:0,valesReg:0},
+  {date:"2026-03-04",loja:1450.80,dist:0,site:128.50,cartoes:1100.80,dinheiro:60,mbway:0,paypal:0,visaOnline:290,refMB:0,tb:0,bitcoin:0,valesReg:0},
+  {date:"2026-03-05",loja:780.00,dist:0,site:0,cartoes:690,dinheiro:90,mbway:0,paypal:0,visaOnline:0,refMB:0,tb:0,bitcoin:0,valesReg:0},
+  {date:"2026-03-06",loja:950.30,dist:0,site:65.00,cartoes:860.30,dinheiro:90,mbway:0,paypal:0,visaOnline:0,refMB:0,tb:0,bitcoin:0,valesReg:0},
+  {date:"2026-03-07",loja:1512.50,dist:0,site:189.95,cartoes:1600.95,dinheiro:0.60,mbway:0,paypal:65,visaOnline:89.95,refMB:355,tb:0,bitcoin:0,valesReg:0},
+];
+
 function MainApp({ user, onLogout }) {
   const [tab, setTab] = useState("pagamentos");
-  const [payables, setPayables] = useState(INIT_PAYABLES);
-  const [ccSuppliers, setCcSuppliers] = useState(INIT_CC_SUPPLIERS);
-  const [ccClients, setCcClients] = useState(INIT_CC_CLIENTS);
-  const [tasks, setTasks] = useState([
-    {id:1,title:"Processar pagamento Unit Legal",amount:851.78,assignee:"Kátia Mendes",priority:"alta",status:"pendente",dueDate:"2026-03-10",method:"Transferência bancária",bank:"bpi",notes:"FT 2026A1/40 — vencido desde 10.02",payableId:21,category:"servicos"},
-    {id:2,title:"Processar pagamento AR Telecom",amount:190.80,assignee:"Kátia Mendes",priority:"alta",status:"em_processamento",dueDate:"2026-03-08",method:"Transferência bancária",bank:"abanca",notes:"F26_001853 — vencido desde 03.03",payableId:8,category:"telecom"},
-    {id:3,title:"Enviar plano pagamentos Redicom",amount:0,assignee:"Kátia Mendes",priority:"média",status:"pendente",dueDate:"2026-03-12",method:"",bank:"",notes:"Copiar plano de CC e enviar por email",payableId:null,category:""},
-    {id:4,title:"Verificar recebimento Escala25",amount:162.28,assignee:"Kátia Mendes",priority:"baixa",status:"pendente",dueDate:"2026-03-15",method:"",bank:"",notes:"FT 2026A1/58 — verificar se cliente pagou",payableId:null,category:""},
-  ]);
-  const [bankAccounts, setBankAccounts] = useState(INIT_BANK_ACCOUNTS);
-  const [confirmingPays, setConfirmingPays] = useState([
-    {id:1,supplier:"Scarpa",doc:"2023FE02027",amount:2733.44,payDate:"2026-02-13",debitDate:"2026-06-13",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
-    {id:2,supplier:"Equip UK",doc:"SI2512-07363",amount:2636.94,payDate:"2026-02-16",debitDate:"2026-06-16",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
-    {id:3,supplier:"Boreal",doc:"001-53925",amount:1591.85,payDate:"2026-02-23",debitDate:"2026-06-23",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
-    {id:4,supplier:"YY Vertical",doc:"CO",amount:700,payDate:"2026-02-25",debitDate:"2026-06-25",bank:"abanca",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
-    {id:5,supplier:"Dicaltex",doc:"BG/2485",amount:439.82,payDate:"2026-01-13",debitDate:"2026-03-10",bank:"bpi",status:"processado",notes:"",linkedTo:null,linkedFrom:null,debits:[]},
-  ]);
-  const [completedPayments, setCompletedPayments] = useState([]);
-  const [dailySales, setDailySales] = useState([
-    {date:"2026-03-02",loja:1280.50,dist:0,site:0,cartoes:980.50,dinheiro:290,mbway:0,paypal:0,visaOnline:10,refMB:0,tb:0,bitcoin:0,valesReg:0},
-    {date:"2026-03-03",loja:890.20,dist:215,site:45.90,cartoes:650.20,dinheiro:69.70,mbway:0,paypal:0,visaOnline:0,refMB:385.30,tb:0,bitcoin:0,valesReg:0},
-    {date:"2026-03-04",loja:1450.80,dist:0,site:128.50,cartoes:1100.80,dinheiro:60,mbway:0,paypal:0,visaOnline:290,refMB:0,tb:0,bitcoin:0,valesReg:0},
-    {date:"2026-03-05",loja:780.00,dist:0,site:0,cartoes:690,dinheiro:90,mbway:0,paypal:0,visaOnline:0,refMB:0,tb:0,bitcoin:0,valesReg:0},
-    {date:"2026-03-06",loja:950.30,dist:0,site:65.00,cartoes:860.30,dinheiro:90,mbway:0,paypal:0,visaOnline:0,refMB:0,tb:0,bitcoin:0,valesReg:0},
-    {date:"2026-03-07",loja:1512.50,dist:0,site:189.95,cartoes:1600.95,dinheiro:0.60,mbway:0,paypal:65,visaOnline:89.95,refMB:355,tb:0,bitcoin:0,valesReg:0},
-  ]);
-  const [commissionRules, setCommissionRules] = useState(INIT_COMMISSION_RULES);
-  const [cofre, setCofre] = useState(INIT_COFRE);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [bankAccounts, setBankAccounts] = useState(() => loadLS("bankAccounts", INIT_BANK_ACCOUNTS));
+  const [payables, setPayables] = useState(() => loadLS("payables", INIT_PAYABLES));
+  const [confirmingPays, setConfirmingPays] = useState(() => loadLS("confirmingPays", INIT_CONFIRMING_PAYS));
+  const [dailySales, setDailySales] = useState(() => loadLS("dailySales", INIT_DAILY_SALES));
+  const [tasks, setTasks] = useState(() => loadLS("tasks", INIT_TASKS));
+  const [cofre, setCofre] = useState(() => loadLS("cofre", INIT_COFRE));
+  const [commissionRules, setCommissionRules] = useState(() => loadLS("commissionRules", INIT_COMMISSION_RULES));
+  const [ccSuppliers, setCcSuppliers] = useState(() => loadLS("ccSuppliers", INIT_CC_SUPPLIERS));
+  const [ccClients, setCcClients] = useState(() => loadLS("ccClients", INIT_CC_CLIENTS));
+  const [completedPayments, setCompletedPayments] = useState(() => loadLS("completedPayments", []));
+  const [categories, setCategories] = useState(() => loadLS("categories", DEFAULT_CATEGORIES));
+
+  // Persist main state to localStorage on every change
+  useEffect(() => { saveLS("bankAccounts", bankAccounts); }, [bankAccounts]);
+  useEffect(() => { saveLS("payables", payables); }, [payables]);
+  useEffect(() => { saveLS("confirmingPays", confirmingPays); }, [confirmingPays]);
+  useEffect(() => { saveLS("dailySales", dailySales); }, [dailySales]);
+  useEffect(() => { saveLS("tasks", tasks); }, [tasks]);
+  useEffect(() => { saveLS("cofre", cofre); }, [cofre]);
+  useEffect(() => { saveLS("commissionRules", commissionRules); }, [commissionRules]);
+  useEffect(() => { saveLS("ccSuppliers", ccSuppliers); }, [ccSuppliers]);
+  useEffect(() => { saveLS("ccClients", ccClients); }, [ccClients]);
+  useEffect(() => { saveLS("completedPayments", completedPayments); }, [completedPayments]);
+  useEffect(() => { saveLS("categories", categories); }, [categories]);
 
   const tabs = [
     {id:"pagamentos",label:"Pagamentos",icon:CreditCard},
